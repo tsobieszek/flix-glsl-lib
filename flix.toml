@@ -1,0 +1,8 @@
+[package]
+name        = "flix-glsl-lib"
+description = "test"
+version     = "0.1.0"
+flix        = "0.72.0"
+authors     = ["Tomasz Sobieszek <tom.sobieszek@gmail.com>"]
+
+[dependencies]
