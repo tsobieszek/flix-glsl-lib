@@ -1,7 +1,7 @@
 [package]
 name        = "flix-glsl-lib"
 description = "test"
-version     = "0.1.0"
+version     = "0.1.2"
 flix        = "0.72.0"
 authors     = ["Tomasz Sobieszek <tom.sobieszek@gmail.com>"]
 repository  = "github:tsobieszek/flix-glsl-lib"

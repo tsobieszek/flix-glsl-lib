@@ -1,8 +1,9 @@
 ///
 /// `Glsl.Expr` — typed GLSL expression AST.
 ///
-/// `Expr[t]` is a phantom-typed tree of the GLSL fragment that produces a
-/// value of type `t`. Codegen is a single fold over the tree (`render`).
+/// `Expr[t]` is a phantom-typed wrapper around a unified `Ast`. The `t` parameter
+/// is phantom — Flix uses it to keep the host typed; it carries no runtime witness.
+/// Codegen is a single fold over the AST tree (`render`).
 ///
 /// All constructors are accessible (the AST is meant to be inspected by
 /// later passes: inlining, constant folding, dead-code elimination), but
@@ -12,10 +13,18 @@
 pub mod Glsl.Expr {
 
     ///
-    /// Typed GLSL expression. The `t` parameter is phantom — Flix uses it
-    /// to keep the host typed; it carries no runtime witness on its own.
+    /// Typed GLSL expression. The `t` parameter is phantom — it carries no
+    /// runtime witness, only compile-time type information for phantom-type
+    /// dispatch (e.g., `let x: Expr[Vec3] = ...`).
     ///
     pub enum Expr[_t] with Eq {
+        case Of(Ast)
+    }
+
+    ///
+    /// Untyped expression AST — the core representation.
+    ///
+    pub enum Ast with Eq {
         ///
         /// Literal already rendered to a GLSL fragment, e.g. `"1.0"` or
         /// `"true"`. Use `lit*` smart constructors to create these.
@@ -32,80 +41,72 @@ pub mod Glsl.Expr {
         /// Binary operator. The operator string is GLSL syntax (`"+"`,
         /// `"*"`, ...). Render wraps the result in parentheses.
         ///
-        case BinOp(String, RenderedExpr, RenderedExpr)
+        case BinOp(String, Ast, Ast)
 
         ///
         /// Unary operator. The operator string is GLSL syntax (`"-"`,
         /// `"!"`, ...). Render wraps the result in parentheses.
         ///
-        case UnOp(String, RenderedExpr)
+        case UnOp(String, Ast)
 
         ///
         /// Function application: `name(args...)`. Used for both builtins
         /// (`sin(x)`, `vec3(a,b,c)`) and user functions.
         ///
-        case App(String, List[RenderedExpr])
+        case App(String, Vector[Ast])
 
         ///
         /// Field / swizzle access: `e.xy`, `e.rgb`, `m[0].xyz`, etc. The
         /// second argument is the post-dot string verbatim.
         ///
-        case Field(RenderedExpr, String)
+        case Field(Ast, String)
 
         ///
         /// Array indexing: `arr[i]`.
         ///
-        case Index(RenderedExpr, RenderedExpr)
+        case Index(Ast, Ast)
     }
 
     ///
-    /// Boxed, type-erased expression. Children of an `Expr[t]` may have
-    /// different types (e.g. `vec3(a, b, c)` mixes `Float32` arguments
-    /// inside a `Vec3` parent), and Flix does not allow heterogeneously
-    /// typed lists. `RenderedExpr` is a wrapper that carries the already-
-    /// rendered string for child positions.
+    /// Rendering an `Ast` to a GLSL fragment.
     ///
-    /// In a more elaborate AST, this would be `case Heterogeneous(Vector[ExistsT])`
-    /// with an existential — but that machinery is not worth carrying for a
-    /// shader DSL whose interpretations are all "fold to string". Pre-
-    /// rendering during construction loses fidelity for inlining/folding
-    /// passes; a future iteration that wants those passes should switch
-    /// to a uniformly-typed boxing wrapper instead.
-    ///
-    pub enum RenderedExpr with Eq {
-        case R(String)
+    pub def render(a: Ast): String = match a {
+        case Ast.Lit(s)               => s
+        case Ast.Var(name)            => name
+        case Ast.BinOp(op, l, r)      => "(${render(l)} ${op} ${render(r)})"
+        case Ast.UnOp(op, e1)         => "(${op}${render(e1)})"
+        case Ast.App(name, args)      => "${name}(${joinArgs(args)})"
+        case Ast.Field(child, suffix) => "${render(child)}.${suffix}"
+        case Ast.Index(child, idx)    => "${render(child)}[${render(idx)}]"
     }
 
     ///
-    /// Rendering a top-level `Expr[t]` to a GLSL fragment.
+    /// Erases the phantom type from a typed expression.
     ///
-    pub def render(e: Expr[t]): String = match e {
-        case Expr.Lit(s)               => s
-        case Expr.Var(name)            => name
-        case Expr.BinOp(op, l, r)      => "(${unbox(l)} ${op} ${unbox(r)})"
-        case Expr.UnOp(op, e1)         => "(${op}${unbox(e1)})"
-        case Expr.App(name, args)      => "${name}(${joinArgs(args)})"
-        case Expr.Field(child, suffix) => "${unbox(child)}.${suffix}"
-        case Expr.Index(child, idx)    => "${unbox(child)}[${unbox(idx)}]"
+    pub def erase(e: Expr[_t]): Ast = match e {
+        case Expr.Of(a) => a
     }
+
+    ///
+    /// Renders a typed expression.
+    ///
+    pub def renderExpr(e: Expr[_t]): String = render(erase(e))
 
     ///
     /// Boxes a typed expression for use as a child of another expression.
+    /// Now returns an untyped `Ast`.
     ///
-    pub def boxed(e: Expr[t]): RenderedExpr =
-        RenderedExpr.R(render(e))
+    pub def boxed(e: Expr[_t]): Ast = erase(e)
 
     ///
-    /// Unwraps an already-rendered child fragment.
+    /// Unwraps and renders an AST child fragment.
     ///
-    pub def unbox(r: RenderedExpr): String = match r {
-        case RenderedExpr.R(s) => s
-    }
+    pub def unbox(a: Ast): String = render(a)
 
-    def joinArgs(args: List[RenderedExpr]): String =
-        args |> List.map(unbox) |> List.join(", ")
+    def joinArgs(args: Vector[Ast]): String =
+        args |> Vector.map(render) |> Vector.join(", ")
 
     instance ToString[Expr[t]] {
-        pub def toString(e: Expr[t]): String = render(e)
+        pub def toString(e: Expr[t]): String = renderExpr(e)
     }
 }

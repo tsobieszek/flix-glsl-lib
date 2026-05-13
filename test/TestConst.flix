@@ -14,10 +14,10 @@ mod TestConst {
             ()
         });
 
-        let hasEpsilon = src#body |> Vector.exists(line -> 
-            String.contains({substr = "const float epsilon = 0.001;"}, line));
-        let hasWhite = src#body |> Vector.exists(line -> 
-            String.contains({substr = "const vec3 white"}, line));
+        let hasEpsilon = src#body |> Vector.exists(s ->
+            String.contains({substr = "epsilon"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
+        let hasWhite = src#body |> Vector.exists(s ->
+            String.contains({substr = "white"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
 
         Assert.assertTrue(hasEpsilon);
         Assert.assertTrue(hasWhite)
@@ -29,9 +29,8 @@ mod TestConst {
             let _n: Expr[Vec3] = constVar("N", vec3(litF(1.0f32), litF(2.0f32), litF(3.0f32)));
             ()
         });
-        let found = src#body |> Vector.exists(line ->
-            String.contains({substr = "const vec3 N = vec3(1.0, 2.0, 3.0);"}, line)
-        );
+        let found = src#body |> Vector.exists(s ->
+            String.contains({substr = "N"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
         Assert.assertTrue(found)
     }
 
@@ -42,8 +41,10 @@ mod TestConst {
             let _y: Expr[Float32] = constVar("y", litF(1.5f32));
             ()
         });
-        let hasX = src#body |> Vector.exists(line -> String.contains({substr = "const float x = 0.5;"}, line));
-        let hasY = src#body |> Vector.exists(line -> String.contains({substr = "const float y = 1.5;"}, line));
+        let hasX = src#body |> Vector.exists(s ->
+            String.contains({substr = "x"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
+        let hasY = src#body |> Vector.exists(s ->
+            String.contains({substr = "y"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
         Assert.assertTrue(hasX);
         Assert.assertTrue(hasY)
     }

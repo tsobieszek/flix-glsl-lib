@@ -1,6 +1,7 @@
 mod TestControl {
 
     use Glsl.Build.runBuild
+    use Glsl.Build.Build
     use Glsl.Stage.Stage
     use Glsl.Render.renderStage
     use Glsl.Smart.ifStmt
@@ -19,13 +20,15 @@ mod TestControl {
     use Glsl.Builtin.addF
     use Glsl.Builtin.call
     use Glsl.Expr.boxed
+    use Glsl.Expr.Expr
+    use Glsl.Expr.Ast
     use Glsl.Types.floatTy
 
     @Test
     def testForLoop(): Unit \ Assert = {
         let src = runBuild(_ -> {
-            forLoop("int i = 0", lt(Glsl.Expr.Expr.Var("i"), Glsl.Expr.Expr.Lit("10")), "i++", _ -> {
-                assign(Glsl.Expr.Expr.Var("x"), addF(Glsl.Expr.Expr.Var("x"), litF(1.0f32)))
+            forLoop("int i = 0", lt(Expr.Of(Ast.Var("i")), Expr.Of(Ast.Lit("10"))), "i++", _ -> {
+                assign(Expr.Of(Ast.Var("x")), addF(Expr.Of(Ast.Var("x")), litF(1.0f32)))
             })
         });
         let glsl = renderStage(Stage.Fragment, src);
@@ -36,12 +39,12 @@ mod TestControl {
     @Test
     def testWhileLoop(): Unit \ Assert = {
         let src = runBuild(_ -> {
-            whileLoop(lt(Glsl.Expr.Expr.Var("x"), litF(10.0f32)), _ -> {
-                ifStmt(lt(Glsl.Expr.Expr.Var("x"), litF(5.0f32)), _ -> {
+            whileLoop(lt(Expr.Of(Ast.Var("x")), litF(10.0f32)), _ -> {
+                ifStmt(lt(Expr.Of(Ast.Var("x")), litF(5.0f32)), _ -> {
                     continueStmt()
                 });
-                assign(Glsl.Expr.Expr.Var("x"), addF(Glsl.Expr.Expr.Var("x"), litF(1.0f32)));
-                ifStmt(lt(Glsl.Expr.Expr.Var("x"), litF(9.0f32)), _ -> {
+                assign(Expr.Of(Ast.Var("x")), addF(Expr.Of(Ast.Var("x")), litF(1.0f32)));
+                ifStmt(lt(Expr.Of(Ast.Var("x")), litF(9.0f32)), _ -> {
                     breakStmt()
                 })
             })
@@ -56,10 +59,10 @@ mod TestControl {
     def testUserFunction(): Unit \ Assert = {
         let src = runBuild(_ -> {
             defineFunction("myFunc", floatTy(), List#{param("x", floatTy()), param("y", floatTy())}, _ -> {
-                returnExpr(addF(Glsl.Expr.Expr.Var("x"), Glsl.Expr.Expr.Var("y")))
+                returnExpr(addF(Expr.Of(Ast.Var("x")), Expr.Of(Ast.Var("y"))))
             });
             let res = floatVar("res");
-            assign(res, call("myFunc", List#{boxed(litF(1.0f32)), boxed(litF(2.0f32))}))
+            assign(res, call("myFunc", Vector#{boxed(litF(1.0f32)), boxed(litF(2.0f32))}))
         });
         let glsl = renderStage(Stage.Fragment, src);
         Assert.assertEq(expected = true, String.contains(substr = "float myFunc(float x, float y) {", glsl));

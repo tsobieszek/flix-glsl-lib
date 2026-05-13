@@ -9,7 +9,12 @@ A type-safe GLSL ES 300 and GLSL 420 shader DSL implementation in Flix, with com
 **Key Features:**
 - **Phantom-typed expressions** — `Expr[Vec3]`, `Expr[Mat4]`, etc. prevent type mismatches (e.g., Vec2 + Float32 caught at compile time)
 - **Effect-driven accumulation** — Declarations and statements collected via algebraic effects, no mutable global state
-- **Stage-conditional rendering** — Vertex/fragment shader variants generated automatically from shared AST
+- **Stage-conditional rendering** — Vertex/fragment shader variants generated automatically from shared AST; two targets: GLSL ES 300 and GLSL 4.20 core
+- **Full control flow** — `ifStmt`, `forLoop`, `whileLoop`, `returnExpr`, `discardFrag`
+- **User-defined functions** — `defineFunction` with typed parameter helpers
+- **Structs and interface blocks** — `declareStruct`, `declareInterfaceBlock`, `declareUniformBlockMulti`
+- **Vulkan descriptors** — set/binding layout via `uniformWithSet`, `storageBuffer`, `pushConstant`
+- **Preprocessor macros** — `define`, `defineFn`, `ifndef`, `extension`, `include`
 - **Variant enumeration** — Parameterize shaders (e.g., `useTint: bool`) and generate all combinations
 - **Zero external dependencies** — Builds with Flix 0.72.0 standard library only
 
@@ -75,7 +80,7 @@ use Glsl.Build.runBuild
 use Glsl.Render.renderStage
 use Glsl.Stage.Stage
 use Glsl.Smart.{uniform, attribute, varying, assign}
-use Glsl.Builtin.{vec4, mulMatVec}
+use Glsl.Builtin.{vec4FromVec3, mulMatVec, litF}
 use Glsl.Types.{Mat4, Vec3, Vec4}
 
 def vertexShader(): String =
@@ -84,7 +89,7 @@ def vertexShader(): String =
         let position: Expr[Vec3] = attribute(0, "position");
         let vPosition: Expr[Vec3] = varying("out", "vPosition");
         
-        let transformed: Expr[Vec4] = mulMatVec(mvp, vec4(position, 1.0f32));
+        let transformed: Expr[Vec4] = mulMatVec(mvp, vec4FromVec3(position, litF(1.0f32)));
         assign(varying("out", "gl_Position"), transformed);
         assign(vPosition, position)
     });
@@ -152,54 +157,95 @@ def main(): Unit \ IO =
 src/
   Glsl.flix                 # Root namespace
   Glsl/
-    Types.flix              # Phantom type tags (Vec2, Vec3, Mat4, etc.)
+    Types.flix              # TypeRef, Precision, phantom type tags
     Expr.flix               # Expression AST and render fold
-    Build.flix              # Effect definition and handler
+    Ast.flix                # Declarations/statements/blocks AST
+    Build.flix              # Typed effect definition and handler
     Smart.flix              # User-facing smart constructors
     Builtin.flix            # GLSL builtins (sin, cos, texture, etc.)
     Swizzle.flix            # Typed swizzle helpers (xyz, rgb, etc.)
     Numeric.flix            # Arithmetic traits (Add, Sub, Mul, Div)
     Stage.flix              # Vertex/Fragment discriminant
-    Render.flix             # ShaderSource → GLSL string
+    Render.flix             # ShaderSource → GLSL string (ES 300 + 4.20 core)
     Variants.flix           # Parameter enumeration
-  Examples/
-    ShaderTest.flix         # End-to-end integration test
 
-test/
+test/                       # 22 test files, 97 @Test functions
   TestTypes.flix            # Type system tests
+  TestAst.flix              # AST renderer tests
   TestSwizzle.flix          # Swizzle helper tests
-  TestMath.flix             # Math builtin tests
-  TestAdvancedQualifiers*   # Precision/binding/layout tests
-  ... (12+ total test files)
+  TestAdvancedQualifiers*   # Precision/binding/layout/Vulkan tests
+  TestStructs.flix          # Struct and interface block tests
+  TestUniformBlocks.flix    # Uniform block tests
+  TestVulkan.flix           # Vulkan descriptor set tests
+  TestControl.flix          # Control flow tests
+  TestIntegration.flix      # End-to-end integration tests
+  ...
 ```
 
 ## Core API
 
+### Entry Points
+
+```flix
+Glsl.Build.runBuild(thunk): ShaderSource
+Glsl.Render.renderStage(stage, src): String      // GLSL ES 300
+Glsl.Render.renderStage420(stage, src): String   // GLSL 4.20 core
+```
+
 ### Declaration Helpers
 
 ```flix
-uniform(name: String): Expr[t] \ Build
-attribute(location: Int32, name: String): Expr[t] \ Build
-varying(direction: String, name: String): Expr[t] \ Build
-output(location: Int32, name: String): Expr[t] \ Build
-localVar(name: String, rhs: Expr[t]): Expr[t] \ Build
+uniform(name), uniformWithBinding(name, binding), uniformWithSet(name, set, binding)
+attribute(location, name), varying(direction, name), output(location, name)
+localVar(name, rhs), constVar(name, rhs), globalVar(name, rhs)
+```
+
+### Struct / Block Declarations
+
+```flix
+declareStruct(name, builder): Unit \ Build
+declareInterfaceBlock(dir, name, instance, builder): Unit \ Build
+declareUniformBlockMulti(blockName, instance, set?, binding, builder): Unit \ Build
+storageBuffer(name, instance, set, binding, builder): Unit \ Build
+pushConstant(blockName, instance, builder): Unit \ Build
+```
+
+### Control Flow
+
+```flix
+ifStmt(cond, body), elseIfStmt(cond, body), elseStmt(body)
+forLoop(init, cond, incr, body), whileLoop(cond, body)
+breakStmt(), continueStmt(), returnStmt(), returnExpr(e), discardFrag()
+```
+
+### User-Defined Functions
+
+```flix
+defineFunction(name, retType, params, body): Unit \ Build
+param(name, proxy), inoutParam(name, proxy), constParam(name, proxy)
+```
+
+### Preprocessor
+
+```flix
+define(name, value), defineFn(name, params, body), ifndef(macro, value)
+extension(name, behavior), include(path)
 ```
 
 ### Statement Helpers
 
 ```flix
-assign(lhs: Expr[t], rhs: Expr[t]): Unit \ Build
-assignField(lhs: Expr[t], field: String, rhs: Expr[t]): Unit \ Build
-discardFrag(): Unit \ Build
+assign(lhs, rhs), assignField(lhs, field, rhs): Unit \ Build
 ```
 
 ### GLSL Builtins
 
 ```flix
-vec2, vec3, vec4, ivec*, uvec*, bvec*, mat*     # Constructors
-sin, cos, tan, sqrt, length, normalize, dot     # Math functions
-texture(sampler, coord)                         # Texture sampling
-mulMatVec(mat, vec)                             # Matrix-vector multiply
+vec2, vec3, vec4, ivec*, uvec*, bvec*, mat*          // constructors
+sin, cos, tan, sqrt, length, normalize, dot, cross   // math
+texture(sampler, coord), textureLod, textureSize     // texture sampling
+mulMatVec(mat, vec), transpose, inverse              // matrix
+litF, litI, litU, litB                               // literals
 ```
 
 ### Swizzle Helpers
@@ -208,14 +254,14 @@ mulMatVec(mat, vec)                             # Matrix-vector multiply
 xyz(v: Expr[Vec4]): Expr[Vec3]
 rgb(v: Expr[Vec4]): Expr[Vec3]
 xy(v: Expr[Vec*]): Expr[Vec2]
-// ... and aliases: xyzw, rgba, stpq, etc.
+// aliases: xyzw, rgba, stpq, etc.
 ```
 
 ## Design Philosophy
 
 - **Type Safety First:** Phantom types catch errors at compile time, not at runtime.
 - **Effect-Driven State:** No mutable references; all accumulation happens in region-scoped effect handlers.
-- **Monomorphic Code:** All GLSL code flows as pre-rendered strings through effects, avoiding Flix polymorphic effect limitations.
+- **AST-First Codegen:** Smart constructors emit typed AST nodes; rendering is centralized in `Glsl.Ast` and `Glsl.Render`.
 - **Dead Code Elimination:** Stage-conditional rendering automatically omits irrelevant sections (vertex doesn't emit outputs, fragment doesn't emit attributes).
 
 ## Documentation
@@ -232,7 +278,7 @@ xy(v: Expr[Vec*]): Expr[Vec2]
 
 - **No GLSL parser:** All shaders must be constructed via the Flix API; `.glsl` files cannot be imported directly.
 - **Boolean-only variants:** Shader parameters are currently limited to boolean flags; integer/enum variants are a planned extension.
-- **Pre-rendered expressions:** AST rendering is done eagerly, limiting future optimization passes (constant folding, inlining). This is by design to work around Flix 0.72.0 polymorphic effect limitations.
+- **No optimization passes yet:** The AST is retained, but constant folding, inlining, and dead-code elimination are future work.
 
 ## Future Work
 
@@ -248,7 +294,7 @@ See [ADDITIONAL_INSIGHTS.md](./ADDITIONAL_INSIGHTS.md) for more details.
 ## Contributing
 
 When adding new features:
-1. Follow the module organization: Types/Expr/Build (foundation), Builtin/Swizzle/Numeric (middle), Smart/Render/Variants (top).
+1. Follow the module organization: Types/Expr/Ast/Build (foundation), Builtin/Swizzle/Numeric (middle), Smart/Render/Variants (top).
 2. Maintain phantom type patterns for new GLSL types.
 3. Add @Test-annotated tests in the `test/` directory.
 4. Update CLAUDE.md and ADDITIONAL_INSIGHTS.md with design rationale.

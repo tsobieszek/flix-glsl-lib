@@ -16,14 +16,14 @@ mod TestVulkan {
             ()
         });
 
-        let s1Present = src#uniforms |> Vector.exists(line -> 
-            String.contains({substr = "set = 0, binding = 0"}, line));
-        let s2Present = src#uniforms |> Vector.exists(line -> 
-            String.contains({substr = "set = 0, binding = 1"}, line));
-        let u1Present = src#uniforms |> Vector.exists(line -> 
-            String.contains({substr = "set = 1, binding = 0"}, line));
-        let u2Present = src#uniforms |> Vector.exists(line -> 
-            String.contains({substr = "set = 1, binding = 1"}, line));
+        let s1Present = src#uniforms |> Vector.exists(u ->
+            String.contains({substr = "set = 0, binding = 0"}, Glsl.Ast.renderUniform(u)));
+        let s2Present = src#uniforms |> Vector.exists(u ->
+            String.contains({substr = "set = 0, binding = 1"}, Glsl.Ast.renderUniform(u)));
+        let u1Present = src#uniforms |> Vector.exists(u ->
+            String.contains({substr = "set = 1, binding = 0"}, Glsl.Ast.renderUniform(u)));
+        let u2Present = src#uniforms |> Vector.exists(u ->
+            String.contains({substr = "set = 1, binding = 1"}, Glsl.Ast.renderUniform(u)));
 
         Assert.assertTrue(s1Present);
         Assert.assertTrue(s2Present);

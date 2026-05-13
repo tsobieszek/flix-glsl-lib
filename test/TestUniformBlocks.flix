@@ -14,24 +14,26 @@ mod TestUniformBlocks {
             declareUniformBlockMulti("LightData", "lights", Some(2), 3, _ -> {
                 discard uniformBlockMemberTyped("position", (Proxy.Proxy: Proxy[Vec4]));
                 discard uniformBlockMemberTyped("color", (Proxy.Proxy: Proxy[Vec4]));
-                discard (uniformBlockMemberTyped("intensity", (Proxy.Proxy: Proxy[Float32])): Glsl.Expr.Expr[Float32])
-            })
+                discard (uniformBlockMemberTyped("intensity", (Proxy.Proxy: Proxy[Float32])): Glsl.Expr.Expr[Float32]);
+                ()
+            });
+            ()
         });
 
         let srcNoSet = runBuild(_ -> {
             declareUniformBlockMulti("FrameData", "frame", None, 1, _ -> {
                 discard uniformBlockMemberTyped("deltaTime", (Proxy.Proxy: Proxy[Float32]));
-                discard (uniformBlockMemberTyped("elapsedTime", (Proxy.Proxy: Proxy[Float32])): Glsl.Expr.Expr[Float32])
-            })
+                discard (uniformBlockMemberTyped("elapsedTime", (Proxy.Proxy: Proxy[Float32])): Glsl.Expr.Expr[Float32]);
+                ()
+            });
+            ()
         });
 
-        let hasSetVersion = srcWithSet#functions |> Vector.exists(line ->
-            String.contains({substr = "layout(std140, set = 2, binding = 3) uniform LightData"}, line)
-        );
+        let hasSetVersion = srcWithSet#topLevels |> Vector.exists(t ->
+            String.contains({substr = "layout(std140, set = 2, binding = 3) uniform LightData"}, Glsl.Ast.renderTopLevel(t)));
 
-        let hasNoSetVersion = srcNoSet#functions |> Vector.exists(line ->
-            String.contains({substr = "layout(std140, binding = 1) uniform FrameData"}, line)
-        );
+        let hasNoSetVersion = srcNoSet#topLevels |> Vector.exists(t ->
+            String.contains({substr = "layout(std140, binding = 1) uniform FrameData"}, Glsl.Ast.renderTopLevel(t)));
 
         Assert.assertTrue(hasSetVersion);
         Assert.assertTrue(hasNoSetVersion)
@@ -43,9 +45,8 @@ mod TestUniformBlocks {
             let _color: Expr[Vec4] = uniformWithSet("objectColor", 2, 3);
             ()
         });
-        let found = src#uniforms |> Vector.exists(line ->
-            String.contains({substr = "layout(set = 2, binding = 3) uniform vec4 objectColor;"}, line)
-        );
+        let found = src#uniforms |> Vector.exists(u ->
+            String.contains({substr = "layout(set = 2, binding = 3) uniform vec4 objectColor;"}, Glsl.Ast.renderUniform(u)));
         Assert.assertTrue(found)
     }
 
@@ -57,9 +58,9 @@ mod TestUniformBlocks {
             let _uni: Expr[Vec4] = uniformWithSet("data", 1, 0);
             ()
         });
-        let hasSamp1 = src#uniforms |> Vector.exists(line -> String.contains({substr = "set = 0, binding = 0"}, line));
-        let hasSamp2 = src#uniforms |> Vector.exists(line -> String.contains({substr = "set = 0, binding = 1"}, line));
-        let hasData = src#uniforms |> Vector.exists(line -> String.contains({substr = "set = 1, binding = 0"}, line));
+        let hasSamp1 = src#uniforms |> Vector.exists(u -> String.contains({substr = "set = 0, binding = 0"}, Glsl.Ast.renderUniform(u)));
+        let hasSamp2 = src#uniforms |> Vector.exists(u -> String.contains({substr = "set = 0, binding = 1"}, Glsl.Ast.renderUniform(u)));
+        let hasData = src#uniforms |> Vector.exists(u -> String.contains({substr = "set = 1, binding = 0"}, Glsl.Ast.renderUniform(u)));
         Assert.assertTrue(hasSamp1);
         Assert.assertTrue(hasSamp2);
         Assert.assertTrue(hasData)

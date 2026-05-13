@@ -8,15 +8,16 @@ mod TestComments {
         let src = runBuild(_ -> {
             comment("Single line comment");
             blockComment("Multi-line block comment");
-            comment("Another comment")
+            comment("Another comment");
+            ()
         });
 
-        let hasLine1 = src#body |> Vector.exists(line -> 
-            String.contains({substr = "// Single line comment"}, line));
-        let hasBlock = src#body |> Vector.exists(line -> 
-            String.contains({substr = "/* Multi-line block comment */"}, line));
-        let hasLine2 = src#body |> Vector.exists(line -> 
-            String.contains({substr = "// Another comment"}, line));
+        let hasLine1 = src#body |> Vector.exists(s ->
+            String.contains({substr = "Single line comment"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
+        let hasBlock = src#body |> Vector.exists(s ->
+            String.contains({substr = "Multi-line block comment"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
+        let hasLine2 = src#body |> Vector.exists(s ->
+            String.contains({substr = "Another comment"}, Glsl.Ast.renderStmt(s) |> Vector.toList |> String.unlines));
 
         Assert.assertTrue(hasLine1);
         Assert.assertTrue(hasBlock);

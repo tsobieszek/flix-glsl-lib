@@ -1,5 +1,5 @@
 mod TestBuiltins {
-    use Glsl.Expr.render
+    use Glsl.Expr.renderExpr
     use Glsl.Smart.glPosition
     use Glsl.Smart.glFragCoord
     use Glsl.Smart.glFrontFacing
@@ -8,7 +8,7 @@ mod TestBuiltins {
     @Test
     pub def testBuiltInVertex(): Unit \ Assert = {
         let pos = glPosition();
-        Assert.assertEq(expected = "gl_Position", render(pos))
+        Assert.assertEq(expected = "gl_Position", renderExpr(pos))
     }
 
     @Test
@@ -17,8 +17,8 @@ mod TestBuiltins {
         let facing = glFrontFacing();
         let view = glViewIndex();
 
-        Assert.assertEq(expected = "gl_FragCoord", render(coord));
-        Assert.assertEq(expected = "gl_FrontFacing", render(facing));
-        Assert.assertEq(expected = "gl_ViewIndex", render(view))
+        Assert.assertEq(expected = "gl_FragCoord", renderExpr(coord));
+        Assert.assertEq(expected = "gl_FrontFacing", renderExpr(facing));
+        Assert.assertEq(expected = "gl_ViewIndex", renderExpr(view))
     }
 }

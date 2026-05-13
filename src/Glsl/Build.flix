@@ -2,135 +2,122 @@
 /// `Glsl.Build` — the algebraic effect for declaration and statement
 /// accumulation.
 ///
-/// Each emission goes through one of five typed channels (uniform /
-/// attribute / varying / output / body). The handler accumulates the
-/// strings into `MutList`s allocated in a region and returns a
-/// `ShaderSource` record at the end. Because all payloads are already-
-/// rendered `String`s, the effect itself stays monomorphic — sidestepping
-/// the open question about polymorphic effects in Flix 0.72.0.
-///
-/// The accumulator implementation deliberately uses `MutList.push` (O(1)
-/// amortized) inside a `region`, then converts to `Vector` on exit. This
-/// validates the "Things I am less sure about" worry from
-/// `ADDITIONAL_INSIGHTS.md` — no `Ref[List]` required, no global state.
+/// Build channels carry typed AST nodes. Rendering is performed later by
+/// `Glsl.Render`, using the render helpers in `Glsl.Ast`.
 ///
 pub mod Glsl.Build {
 
     ///
-    /// The build effect. All channels accept already-formatted GLSL
-    /// fragments (see `Glsl.Smart` for the helpers that produce them).
+    /// The typed build effect. Each channel accepts strongly-typed AST nodes.
     ///
     pub eff Build {
-        def declExtension(line: String): Unit
-        def declInclude(line: String): Unit
-        def declDefine(line: String): Unit
-        def declUniform(line: String): Unit
-        def declAttribute(line: String): Unit
-        def declVarying(line: String): Unit
-        def declOutput(line: String): Unit
-        def declFunction(sig: String, body: Vector[String]): Unit
-        def declBlock(sig: String, body: Vector[String], footer: String): Unit
-        def declGlobal(line: String): Unit
-        def emitStmt(line: String): Unit
-        def declComment(line: String): Unit
+        def declPreprocessor(p: Glsl.Ast.Preprocessor): Unit
+        def declUniform(u: Glsl.Ast.Uniform): Unit
+        def declAttribute(a: Glsl.Ast.Attribute): Unit
+        def declVarying(v: Glsl.Ast.Varying): Unit
+        def declOutput(o: Glsl.Ast.Output): Unit
+        def declTopLevel(d: Glsl.Ast.TopLevel): Unit
+        def declGlobal(g: Glsl.Ast.Global): Unit
+        def emitStmt(s: Glsl.Ast.Stmt): Unit
+        def emitMember(m: Glsl.Ast.BlockMember): Unit
     }
 
     ///
-    /// The frozen output of one `runBuild` invocation. Each field is the
-    /// list of fully-rendered GLSL lines for that section, in emission
-    /// order.
+    /// The frozen output of the new typed `runBuild` invocation.
+    /// Each field holds AST nodes for that section.
     ///
     pub type alias ShaderSource = {
-        extensions = Vector[String],
-        defines = Vector[String],
-        includes = Vector[String],
-        uniforms = Vector[String],
-        attributes = Vector[String],
-        varyings = Vector[String],
-        outputs = Vector[String],
-        functions = Vector[String],
-        globals = Vector[String],
-        body = Vector[String]
+        preprocessor = Vector[Glsl.Ast.Preprocessor],
+        uniforms     = Vector[Glsl.Ast.Uniform],
+        attributes   = Vector[Glsl.Ast.Attribute],
+        varyings     = Vector[Glsl.Ast.Varying],
+        outputs      = Vector[Glsl.Ast.Output],
+        topLevels    = Vector[Glsl.Ast.TopLevel],
+        globals      = Vector[Glsl.Ast.Global],
+        body         = Vector[Glsl.Ast.Stmt]
     }
 
     ///
-    /// Runs `thunk` under a fresh `Build` handler and returns the
+    /// Runs `thunk` under a fresh `Build` handler (typed) and returns the
     /// accumulated declarations and body.
     ///
     pub def runBuild(thunk: Unit -> Unit \ Build): ShaderSource = region rc {
-        let ext = MutList.empty(rc);
-        let dfs = MutList.empty(rc);
-        let inc = MutList.empty(rc);
+        let pre = MutList.empty(rc);
         let uni = MutList.empty(rc);
         let att = MutList.empty(rc);
         let vry = MutList.empty(rc);
         let out = MutList.empty(rc);
-        let fun = MutList.empty(rc);
+        let top = MutList.empty(rc);
         let gbl = MutList.empty(rc);
         let bod = MutList.empty(rc);
         run {
             thunk()
         } with handler Build {
-            def declExtension(line, k) = { MutList.push(line, ext); k() }
-            def declDefine(line, k) = { MutList.push(line, dfs); k() }
-            def declInclude(line, k) = { MutList.push(line, inc); k() }
-            def declUniform(line, k) = { MutList.push(line, uni); k() }
-            def declAttribute(line, k) = { MutList.push(line, att); k() }
-            def declVarying(line, k) = { MutList.push(line, vry); k() }
-            def declOutput(line, k) = { MutList.push(line, out); k() }
-            def declFunction(sig, body, k) = {
-                MutList.push("${sig} {", fun);
-                body |> Vector.forEach(line -> MutList.push("    ${line}", fun));
-                MutList.push("}", fun);
-                k()
-            }
-            def declBlock(sig, body, footer, k) = {
-                MutList.push("${sig} {", fun);
-                body |> Vector.forEach(line -> MutList.push("    ${line}", fun));
-                MutList.push("}${footer}", fun);
-                k()
-            }
-            def declGlobal(line, k) = { MutList.push(line, gbl); k() }
-            def emitStmt(line, k) = { MutList.push(line, bod); k() }
-            def declComment(line, k) = { MutList.push(line, bod); k() }
+            def declPreprocessor(p, k) = { MutList.push(p, pre); k() }
+            def declUniform(u, k) = { MutList.push(u, uni); k() }
+            def declAttribute(a, k) = { MutList.push(a, att); k() }
+            def declVarying(v, k) = { MutList.push(v, vry); k() }
+            def declOutput(o, k) = { MutList.push(o, out); k() }
+            def declTopLevel(d, k) = { MutList.push(d, top); k() }
+            def declGlobal(g, k) = { MutList.push(g, gbl); k() }
+            def emitStmt(s, k) = { MutList.push(s, bod); k() }
+            def emitMember(_m, k) = { k() }
         };
         {
-            extensions = MutList.toVector(ext),
-            defines = MutList.toVector(dfs),
-            includes = MutList.toVector(inc),
-            uniforms = MutList.toVector(uni),
-            attributes = MutList.toVector(att),
-            varyings = MutList.toVector(vry),
-            outputs = MutList.toVector(out),
-            functions = MutList.toVector(fun),
-            globals = MutList.toVector(gbl),
-            body = MutList.toVector(bod)
+            preprocessor = MutList.toVector(pre),
+            uniforms     = MutList.toVector(uni),
+            attributes   = MutList.toVector(att),
+            varyings     = MutList.toVector(vry),
+            outputs      = MutList.toVector(out),
+            topLevels    = MutList.toVector(top),
+            globals      = MutList.toVector(gbl),
+            body         = MutList.toVector(bod)
         }
     }
 
     ///
-    /// Internal helper: runs `thunk` and captures all `emitStmt` calls
-    /// into a `Vector[String]`, while forwarding all other `Build`
-    /// operations to the parent handler.
+    /// Internal helper (typed): runs `thunk` and captures all `emitStmt` calls
+    /// into a `Vector[Stmt]`, while forwarding all other `Build` operations
+    /// to the parent handler.
     ///
-    pub def captureBody(thunk: Unit -> Unit \ Build): Vector[String] \ Build = region rc {
+    pub def captureBody(thunk: Unit -> Unit \ Build): Vector[Glsl.Ast.Stmt] \ Build = region rc {
         let bod = MutList.empty(rc);
         run {
             thunk()
         } with handler Build {
-            def declExtension(line, k) = { Build.declExtension(line); k() }
-            def declInclude(line, k) = { Build.declInclude(line); k() }
-            def declDefine(line, k) = { Build.declDefine(line); k() }
-            def declUniform(line, k) = { Build.declUniform(line); k() }
-            def declAttribute(line, k) = { Build.declAttribute(line); k() }
-            def declVarying(line, k) = { Build.declVarying(line); k() }
-            def declOutput(line, k) = { Build.declOutput(line); k() }
-            def declFunction(sig, body, k) = { Build.declFunction(sig, body); k() }
-            def declBlock(sig, body, footer, k) = { Build.declBlock(sig, body, footer); k() }
-            def declGlobal(line, k) = { Build.declGlobal(line); k() }
-            def emitStmt(line, k) = { MutList.push(line, bod); k() }
-            def declComment(line, k) = { MutList.push(line, bod); k() }
+            def declPreprocessor(p, k) = { Build.declPreprocessor(p); k() }
+            def declUniform(u, k) = { Build.declUniform(u); k() }
+            def declAttribute(a, k) = { Build.declAttribute(a); k() }
+            def declVarying(v, k) = { Build.declVarying(v); k() }
+            def declOutput(o, k) = { Build.declOutput(o); k() }
+            def declTopLevel(d, k) = { Build.declTopLevel(d); k() }
+            def declGlobal(g, k) = { Build.declGlobal(g); k() }
+            def emitStmt(s, k) = { MutList.push(s, bod); k() }
+            def emitMember(m, k) = { Build.emitMember(m); k() }
         };
         MutList.toVector(bod)
+    }
+
+    ///
+    /// Internal helper (typed): runs `thunk` and captures all `emitMember` calls
+    /// into a `Vector[BlockMember]`, while forwarding all other `Build` operations
+    /// to the parent handler.
+    ///
+    pub def captureMembers(thunk: Unit -> Unit \ Build): Vector[Glsl.Ast.BlockMember] \ Build = region rc {
+        let mem = MutList.empty(rc);
+        run {
+            thunk()
+        } with handler Build {
+            def declPreprocessor(p, k) = { Build.declPreprocessor(p); k() }
+            def declUniform(u, k) = { Build.declUniform(u); k() }
+            def declAttribute(a, k) = { Build.declAttribute(a); k() }
+            def declVarying(v, k) = { Build.declVarying(v); k() }
+            def declOutput(o, k) = { Build.declOutput(o); k() }
+            def declTopLevel(d, k) = { Build.declTopLevel(d); k() }
+            def declGlobal(g, k) = { Build.declGlobal(g); k() }
+            def emitStmt(s, k) = { Build.emitStmt(s); k() }
+            def emitMember(m, k) = { MutList.push(m, mem); k() }
+        };
+        MutList.toVector(mem)
     }
 }
