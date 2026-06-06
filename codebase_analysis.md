@@ -166,9 +166,9 @@
   - `emitMember(m)` — struct/block member
 - **`ShaderSource`:** Record with 8 typed vector fields: `preprocessor`, `uniforms`, `attributes`, `varyings`, `outputs`, `topLevels`, `globals`, `body`
 - **`runBuild()`:** Entry point handler
-  - Allocates 8 `MutList`s in a region
+  - Allocates 8 `MutList`s in a region (one per `ShaderSource` field)
   - Runs thunk under Build handler
-  - Each operation pushes to corresponding MutList
+  - Each of the 8 declaration/statement operations pushes to its corresponding MutList; `emitMember` is silently discarded (members are only meaningful inside `captureMembers` blocks)
   - Returns frozen `ShaderSource` (lists → vectors)
   - No global state; region-scoped allocation
 - **`captureBody()`:** Nested handler
